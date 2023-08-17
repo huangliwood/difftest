@@ -19,44 +19,21 @@ include config/verilator.mk
 EMU_TOP      = SimTop
 
 EMU_CSRC_DIR = $(abspath ./src/test/csrc)
-EMU_CXXFILES = $(shell find $(EMU_CSRC_DIR) -name "*.cpp") $(SIM_CXXFILES) $(DIFFTEST_CXXFILES)
-EMU_CXXFLAGS += -std=c++11 -static -Wall -I$(EMU_CSRC_DIR) -I$(SIM_CSRC_DIR) -I$(DIFFTEST_CSRC_DIR) -I$(PLUGIN_CHEAD_DIR)
+EMU_CXXFILES = $(SIM_CXXFILES) $(DIFFTEST_CXXFILES) $(CHISELDB_CXXFILES) $(PLUGIN_CXXFILES) $(VERILATOR_CXXFILES)
+EMU_CXXFLAGS += -std=c++11 -static -Wall -I$(EMU_CSRC_DIR) -I$(SIM_CSRC_DIR) -I$(DIFFTEST_CSRC_DIR) -I$(PLUGIN_CHEAD_DIR) -I$(CHISELDB_CSRC_DIR)
 EMU_CXXFLAGS += -DVERILATOR -DNUM_CORES=$(NUM_CORES)
 EMU_CXXFLAGS += $(shell sdl2-config --cflags) -fPIE
-
-ifeq ($(WITH_CHISELDB), 1)
-CHISELDB_EXTRA_ARG = $(BUILD_DIR)/chisel_db.cpp
-EMU_CXXFLAGS += -I$(BUILD_DIR) -DENABLE_CHISEL_DB
-else
-CHISELDB_EXTRA_ARG =
-endif
-
-ifeq ($(WITH_CONSTANTIN), 1)
-CONSTANTIN_SRC = $(BUILD_DIR)/constantin.cpp
-EMU_CXXFLAGS += -I$(BUILD_DIR) -DENABLE_CONSTANTIN
-ifndef NOOP_HOME
-$(error NOOP_HOME which is used in constantin is not set)
-endif
-else
-CONSTANTIN_SRC =
-endif
-
-ifeq ($(WITH_IPC), 1)
-EMU_CXXFLAGS += -I$(BUILD_DIR) -DENABLE_IPC
-endif
-
 EMU_LDFLAGS  += -lpthread -lSDL2 -ldl -lz -lsqlite3
-EMU_CXX_EXTRA_FLAGS ?=
+EMU_CXX_EXTRA_FLAGS ?= 
 
 EMU_VFILES    = $(SIM_VSRC)
 
-OBJCACHE =
 CCACHE := $(if $(shell which ccache),ccache,)
 ifneq ($(CCACHE),)
 export OBJCACHE = ccache
 endif
 
-VEXTRA_FLAGS += -I$(abspath $(BUILD_DIR)) --x-assign unique -O3 -CFLAGS "$(EMU_CXXFLAGS) $(EMU_CXX_EXTRA_FLAGS)" -LDFLAGS "$(EMU_LDFLAGS)"
+VEXTRA_FLAGS += --x-assign unique -O3 -CFLAGS "$(EMU_CXXFLAGS) $(EMU_CXX_EXTRA_FLAGS)" -LDFLAGS "$(EMU_LDFLAGS)"
 
 # REF SELECTION
 ifeq ($(REF),spike)
@@ -66,23 +43,20 @@ endif
 # Verilator version check
 VERILATOR_VER_CMD = verilator --version | cut -f2 -d' ' | tr -d '.'
 VERILATOR_4_210 := $(shell expr `$(VERILATOR_VER_CMD)` \>= 4210)
-ifeq ($(VERILATOR_4_210),1)
+VERILATOR_5_008 := $(shell expr `$(VERILATOR_VER_CMD)` \>= 5000)
+
+ifeq ($(VERILATOR_5_000),1)
+EMU_CXXFLAGS += -DVERILATOR_5_008
+VEXTRA_FLAGS += --no-timing
+else ifeq ($(VERILATOR_4_210),1)
 EMU_CXXFLAGS += -DVERILATOR_4_210
 VEXTRA_FLAGS += --instr-count-dpi 1
-endif
-VERILATOR_5_000 := $(shell expr `$(VERILATOR_VER_CMD)` \>= 5000)
-ifeq ($(VERILATOR_5_000),1)
-VEXTRA_FLAGS += --no-timing
 endif
 
 # Verilator trace support
 EMU_TRACE ?=
-ifneq (,$(filter $(EMU_TRACE),1 vcd VCD))
+ifeq ($(EMU_TRACE),1)
 VEXTRA_FLAGS += --trace
-endif
-ifneq (,$(filter $(EMU_TRACE),fst FST))
-VEXTRA_FLAGS += --trace-fst
-EMU_CXXFLAGS += -DENABLE_FST
 endif
 
 # Verilator multi-thread support
@@ -121,11 +95,11 @@ VERILATOR_FLAGS =                   \
   --top-module $(EMU_TOP)           \
   --compiler clang                  \
   +define+VERILATOR=1               \
-  +define+DIFFTEST                  \
   +define+PRINTF_COND=1             \
   +define+RANDOMIZE_REG_INIT        \
   +define+RANDOMIZE_MEM_INIT        \
   +define+RANDOMIZE_GARBAGE_ASSIGN  \
+  +define+RANDOMIZE_INVALID_ASSIGN  \
   +define+RANDOMIZE_DELAY=0         \
   -Wno-STMTDLY -Wno-WIDTH           \
   $(VEXTRA_FLAGS)                   \
@@ -138,18 +112,19 @@ EMU_MK := $(BUILD_DIR)/emu-compile/V$(EMU_TOP).mk
 EMU_DEPS := $(EMU_VFILES) $(EMU_CXXFILES)
 EMU_HEADERS := $(shell find $(EMU_CSRC_DIR) -name "*.h")     \
                $(shell find $(SIM_CSRC_DIR) -name "*.h")     \
-               $(shell find $(DIFFTEST_CSRC_DIR) -name "*.h")
+               $(shell find $(DIFFTEST_CSRC_DIR) -name "*.h") \
+								$(DIFFTEST_CONFIG)
 EMU := $(BUILD_DIR)/emu
 
-$(EMU_MK): $(SIM_TOP_V) | $(EMU_DEPS)
+$(EMU_MK): $(EMU_DEPS)
 	@mkdir -p $(@D)
 	@echo "\n[verilator] Generating C++ files..." >> $(TIMELOG)
 	@date -R | tee -a $(TIMELOG)
 	$(TIME_CMD) verilator --cc --exe $(VERILATOR_FLAGS) \
-		-o $(abspath $(EMU)) -Mdir $(@D) $^ $(EMU_DEPS) $(CHISELDB_EXTRA_ARG) $(CONSTANTIN_SRC)
-	find -L $(BUILD_DIR) -name "VSimTop.h" | xargs sed -i 's/private/public/g'
-	find -L $(BUILD_DIR) -name "VSimTop.h" | xargs sed -i 's/const vlSymsp/vlSymsp/g'
-	find -L $(BUILD_DIR) -name "VSimTop__Syms.h" | xargs sed -i 's/VlThreadPool\* const/VlThreadPool*/g'
+		-o $(abspath $(EMU)) -Mdir $(@D)  $(EMU_DEPS)
+	find $(BUILD_DIR) -name "VSimTop.h" | xargs sed -i 's/private/public/g'
+	find $(BUILD_DIR) -name "VSimTop.h" | xargs sed -i 's/const vlSymsp/vlSymsp/g'
+	find $(BUILD_DIR) -name "VSimTop__Syms.h" | xargs sed -i 's/VlThreadPool\* const/VlThreadPool*/g'
 
 EMU_COMPILE_FILTER =
 # 2> $(BUILD_DIR)/g++.err.log | tee $(BUILD_DIR)/g++.out.log | grep 'g++' | awk '{print "Compiling/Generating", $$NF}'
@@ -178,11 +153,28 @@ EMU_FLAGS = -s $(SEED) -b $(B) -e $(E) $(SNAPSHOT_OPTION) $(WAVEFORM) $(EMU_ARGS
 
 emu: $(EMU)
 
-emu-run: emu
-ifneq ($(REMOTE),localhost)
-	ls build
-endif
-	$(EMU) -i $(IMAGE) --diff=$(REF_SO) $(EMU_FLAGS)
+EMU_RTL_COMP_DIR := $(EMU_SIM_DIR)/emu/comp
+EMU_RTL_MK := $(EMU_RTL_COMP_DIR)/V$(EMU_TOP).mk
+EMU_RTL := $(EMU_RTL_COMP_DIR)/emu
+EMU_FLIST := $(EMU_RTL_COMP_DIR)/design.f
+$(EMU_RTL_MK): $(SIM_TOP_V) | $(EMU_DEPS)
+	$(shell if [ ! -e $(EMU_RTL_COMP_DIR) ];then mkdir -p $(EMU_RTL_COMP_DIR); fi)
+	@echo "\n[verilator] Generating C++ files..." >> $(TIMELOG)
+	@echo $(EMU_VFILES) > $(EMU_FLIST)
+	@cat $(BUILD_DIR)/cpu_flist.f >> $(EMU_FLIST)
+	@date -R | tee -a $(TIMELOG)
+	$(TIME_CMD) verilator --cc --exe $(VERILATOR_FLAGS) \
+		-o $(abspath $(EMU_RTL)) -Mdir $(EMU_RTL_COMP_DIR) $^ $(EMU_DEPS)
+	find $(EMU_RTL_COMP_DIR) -name "VSimTop.h" | xargs sed -i 's/private/public/g'
+	find $(EMU_RTL_COMP_DIR) -name "VSimTop.h" | xargs sed -i 's/const vlSymsp/vlSymsp/g'
+	find $(EMU_RTL_COMP_DIR) -name "VSimTop__Syms.h" | xargs sed -i 's/VlThreadPool\* const/VlThreadPool*/g'
+
+$(EMU_RTL): $(EMU_RTL_MK) $(EMU_DEPS) $(EMU_HEADERS)
+	@echo "\n[g++] Compiling C++ files..." >> $(TIMELOG)
+	@date -R | tee -a $(TIMELOG)
+	$(TIME_CMD) $(MAKE) CXX=clang++ LINK=clang++  VM_PARALLEL_BUILDS=1 OPT_FAST="-O3" -C $(<D) -f $(<F) $(EMU_COMPILE_FILTER)
+
+emu_rtl: $(EMU_RTL)
 
 coverage:
 	verilator_coverage --annotate build/logs/annotated --annotate-min 1 build/logs/coverage.dat

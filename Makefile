@@ -29,12 +29,12 @@ SIM_TOP_V  = $(BUILD_DIR)/$(SIM_TOP).v
 DIFF_SCALA_FILE = $(shell find ./src/main/scala -name '*.scala')
 SCALA_FILE = $(shell find $(DESIGN_DIR)/src/main/scala -name '*.scala' 2>/dev/null)
 
-# generate SimTop.v
-$(SIM_TOP_V): $(DIFF_SCALA_FILE) $(SCALA_FILE)
-	$(MAKE) -C $(DESIGN_DIR) sim-verilog
+# # generate SimTop.v
+# $(SIM_TOP_V): $(DIFF_SCALA_FILE) $(SCALA_FILE)
+# 	$(MAKE) -C $(DESIGN_DIR) sim-verilog
 
-# build simulation top verilog
-sim-verilog: $(SIM_TOP_V)
+# # build simulation top verilog
+# sim-verilog: $(SIM_TOP_V)
 
 # generate difftest files for non-chisel design.
 difftest_verilog:
@@ -69,7 +69,14 @@ DIFFTEST_CXXFILES = $(shell find $(DIFFTEST_CSRC_DIR) -name "*.cpp")
 
 PLUGIN_CHEAD_DIR = $(abspath ./src/test/csrc/plugin/include)
 
-SIM_VSRC = $(shell find ./src/test/vsrc/common -name "*.v" -or -name "*.sv")
+VERILATOR_CSRC_DIR = $(abspath ./src/test/csrc/verilator)
+VERILATOR_CXXFILES = $(shell find $(VERILATOR_CSRC_DIR) -name "*.cpp")
+
+CHISELDB_CSRC_DIR = $(abspath ./src/test/csrc/chiselDB)
+CHISELDB_CXXFILES = $(shell find $(CHISELDB_CSRC_DIR) -name "*.cpp")
+
+SIM_VSRC_DIR ?= $(DESIGN_DIR)/rtl
+SIM_VSRC = $(shell find $(SIM_VSRC_DIR) -name "*.v" -or -name "*.sv")
 
 include verilator.mk
 include vcs.mk
