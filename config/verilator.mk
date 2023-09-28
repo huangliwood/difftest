@@ -30,7 +30,7 @@
 # EMU_COVERAGE ?= 1
 
 # Enable co-simulation with DRAMsim3
-# WITH_DRAMSIM3 ?= 1
+WITH_DRAMSIM3 ?= 1
 
 # Default output period control
 # output will be generated when (B<=GTimer<=E) && (L < loglevel)

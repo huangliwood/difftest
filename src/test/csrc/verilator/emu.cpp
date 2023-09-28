@@ -36,6 +36,10 @@
 
 extern remote_bitbang_t * jtag;
 
+void lua_init(void); // Verilua init
+void lua_main_step(void); // Verilua step
+void lua_execute_final_callback(void); // Verilua cleanup callback
+
 static inline long long int atoll_strict(const char *str, const char *arg) {
   if (strspn(str, " +-0123456789") != strlen(str)) {
     printf("[ERROR] --%s=NUM only accept numeric argument\n", arg);
@@ -301,6 +305,8 @@ inline void Emulator::reset_ncycles(size_t cycles) {
 }
 
 inline void Emulator::single_cycle() {
+  lua_main_step();
+
   static uint64_t wave_ticks = 20;
   dut_ptr->clock = 0;
   dut_ptr->eval();
@@ -532,7 +538,7 @@ uint64_t Emulator::execute(uint64_t max_cycle, uint64_t max_instr) {
   }
 
   display_trapinfo();
-
+  lua_execute_final_callback();
   return cycles;
 }
 

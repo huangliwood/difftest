@@ -24,6 +24,8 @@ EMU_CXXFLAGS += -std=c++11 -static -Wall -I$(EMU_CSRC_DIR) -I$(SIM_CSRC_DIR) -I$
 EMU_CXXFLAGS += -DVERILATOR -DNUM_CORES=$(NUM_CORES)
 EMU_CXXFLAGS += $(shell sdl2-config --cflags) -fPIE
 EMU_LDFLAGS  += -lpthread -lSDL2 -ldl -lz -lsqlite3
+EMU_CXXFLAGS += -I$(VERILUA_HOME)/luajit2.1/include
+EMU_LDFLAGS  += -L$(VERILUA_HOME)/luajit2.1/lib -lluajit-5.1 -L$(VERILUA_HOME)/shared -llua_vpi
 EMU_CXX_EXTRA_FLAGS ?= 
 
 EMU_VFILES    = $(SIM_VSRC)
@@ -33,6 +35,7 @@ ifneq ($(CCACHE),)
 export OBJCACHE = ccache
 endif
 
+VEXTRA_FLAGS += --vpi -Wno-UNOPTTHREADS
 VEXTRA_FLAGS += -I$(abspath $(BUILD_DIR)) --x-assign unique -O3 -CFLAGS "$(EMU_CXXFLAGS) $(EMU_CXX_EXTRA_FLAGS)" -LDFLAGS "$(EMU_LDFLAGS)"
 
 # REF SELECTION
@@ -120,7 +123,7 @@ $(EMU_MK): $(SIM_TOP_V) | $(EMU_DEPS)
 	@echo "\n[verilator] Generating C++ files..." >> $(TIMELOG)
 	@date -R | tee -a $(TIMELOG)
 	$(TIME_CMD) verilator --cc --exe $(VERILATOR_FLAGS) \
-		-o $(abspath $(EMU)) -Mdir $(@D) $^ $(EMU_DEPS)
+		-o $(abspath $(EMU)) -Mdir $(@D) $^ $(EMU_DEPS) $(abspath ./config.vlt)
 	find $(BUILD_DIR) -name "VSimTop.h" | xargs sed -i 's/private/public/g'
 	find $(BUILD_DIR) -name "VSimTop.h" | xargs sed -i 's/const vlSymsp/vlSymsp/g'
 	find $(BUILD_DIR) -name "VSimTop__Syms.h" | xargs sed -i 's/VlThreadPool\* const/VlThreadPool*/g'
@@ -163,7 +166,7 @@ $(EMU_RTL_MK): $(SIM_TOP_V) | $(EMU_DEPS)
 	@cat $(BUILD_DIR)/cpu_flist.f >> $(EMU_FLIST)
 	@date -R | tee -a $(TIMELOG)
 	$(TIME_CMD) verilator --cc --exe $(VERILATOR_FLAGS) \
-		-o $(abspath $(EMU_RTL)) -Mdir $(EMU_RTL_COMP_DIR) $^ $(EMU_DEPS)
+		-o $(abspath $(EMU_RTL)) -Mdir $(EMU_RTL_COMP_DIR) $^ $(EMU_DEPS) $(abspath ./config.vlt)
 	find $(EMU_RTL_COMP_DIR) -name "VSimTop.h" | xargs sed -i 's/private/public/g'
 	find $(EMU_RTL_COMP_DIR) -name "VSimTop.h" | xargs sed -i 's/const vlSymsp/vlSymsp/g'
 	find $(EMU_RTL_COMP_DIR) -name "VSimTop__Syms.h" | xargs sed -i 's/VlThreadPool\* const/VlThreadPool*/g'
